@@ -39,6 +39,9 @@ pub struct ExtractedMetadata {
     pub comfy: ComfyMetadata,
 }
 
+pub const MAX_METADATA_SCAN_BYTES: u64 = 64 * 1024 * 1024; // 64 MB
+pub const MAX_DECOMPRESSED_METADATA_BYTES: u64 = 32 * 1024 * 1024; // 32 MB
+
 /// Extracts metadata and raw binary blobs (EXIF, ICC, XMP, ComfyUI text chunks) from an image file
 pub fn extract_metadata(path: &Path) -> ExtractedMetadata {
     let mut extracted = ExtractedMetadata::default();
@@ -49,7 +52,7 @@ pub fn extract_metadata(path: &Path) -> ExtractedMetadata {
     };
 
     let mut buffer = Vec::new();
-    if file.read_to_end(&mut buffer).is_err() || buffer.len() < 12 {
+    if (&mut file).take(MAX_METADATA_SCAN_BYTES).read_to_end(&mut buffer).is_err() || buffer.len() < 12 {
         return extracted;
     }
 
@@ -64,8 +67,7 @@ pub fn extract_metadata(path: &Path) -> ExtractedMetadata {
         // WebP format
         extract_from_webp(&buffer, &mut extracted);
     } else if buffer.starts_with(b"II*\0") || buffer.starts_with(b"MM\0*") {
-        // TIFF format - TIFF is itself a TIFF/EXIF container
-        extracted.raw_exif = Some(buffer.clone());
+        // TIFF format - detailed EXIF tags will be safely extracted via nom-exif parser below
         extracted.summary.has_exif = true;
     } else if buffer.len() >= 12 && &buffer[4..8] == b"JXL " {
         // JXL container format
@@ -223,7 +225,7 @@ fn extract_from_png(data: &[u8], out: &mut ExtractedMetadata) {
                 && null_idx + 2 < chunk_data.len()
             {
                 let compressed = &chunk_data[null_idx + 2..];
-                let mut decoder = flate2::read::ZlibDecoder::new(compressed);
+                let mut decoder = flate2::read::ZlibDecoder::new(compressed).take(MAX_DECOMPRESSED_METADATA_BYTES);
                 let mut decompressed = Vec::new();
                 if std::io::Read::read_to_end(&mut decoder, &mut decompressed).is_ok() {
                     out.raw_icc = Some(decompressed);
@@ -261,7 +263,7 @@ fn extract_from_png(data: &[u8], out: &mut ExtractedMetadata) {
                     if p <= chunk_data.len() {
                         let text_bytes = &chunk_data[p..];
                         let final_bytes = if comp_flag == 1 {
-                            let mut decoder = flate2::read::ZlibDecoder::new(text_bytes);
+                            let mut decoder = flate2::read::ZlibDecoder::new(text_bytes).take(MAX_DECOMPRESSED_METADATA_BYTES);
                             let mut decomp = Vec::new();
                             if std::io::Read::read_to_end(&mut decoder, &mut decomp).is_ok() {
                                 decomp
@@ -289,7 +291,7 @@ fn extract_from_png(data: &[u8], out: &mut ExtractedMetadata) {
                 let p = null_idx + 1;
                 if p < chunk_data.len() {
                     let compressed = &chunk_data[p + 1..];
-                    let mut decoder = flate2::read::ZlibDecoder::new(compressed);
+                    let mut decoder = flate2::read::ZlibDecoder::new(compressed).take(MAX_DECOMPRESSED_METADATA_BYTES);
                     let mut decompressed = Vec::new();
                     if std::io::Read::read_to_end(&mut decoder, &mut decompressed).is_ok() {
                         let text = String::from_utf8_lossy(&decompressed).to_string();
@@ -602,7 +604,7 @@ fn extract_from_jxl(data: &[u8], out: &mut ExtractedMetadata) {
             let orig_type = &payload[..4];
             let compressed = &payload[4..];
             let mut decompressed = Vec::new();
-            let mut reader = brotli::Decompressor::new(compressed, 4096);
+            let mut reader = brotli::Decompressor::new(compressed, 4096).take(MAX_DECOMPRESSED_METADATA_BYTES);
             if std::io::Read::read_to_end(&mut reader, &mut decompressed).is_ok() {
                 if orig_type == b"comf" {
                     parse_comfy_json_bytes(&decompressed, out);
@@ -664,6 +666,9 @@ pub fn calc_crc32(data: &[u8]) -> u32 {
 }
 
 pub fn append_png_text_chunk(png: &[u8], keyword: &str, text: &str) -> Vec<u8> {
+    if png.len() < 12 || !png.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) {
+        return png.to_vec();
+    }
     let mut chunk_payload = Vec::new();
     chunk_payload.extend_from_slice(keyword.as_bytes());
     chunk_payload.push(0);

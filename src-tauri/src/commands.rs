@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use tauri::{AppHandle, command};
+use tauri::{AppHandle, Window, command};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
@@ -84,22 +84,7 @@ pub async fn cmd_select_files(app: AppHandle) -> Result<Vec<String>, String> {
 
 #[command]
 pub fn cmd_open_folder(app: AppHandle, path: Option<String>) -> Result<(), String> {
-    let resolved_path = if let Some(p) = path {
-        let p_buf = PathBuf::from(&p);
-        if p_buf.is_dir() {
-            p_buf
-        } else if p_buf.is_file() {
-            p_buf
-                .parent()
-                .unwrap_or(std::path::Path::new("."))
-                .to_path_buf()
-        } else {
-            resolve_destination_folder(&None, std::path::Path::new("."))
-        }
-    } else {
-        resolve_destination_folder(&None, std::path::Path::new("."))
-    };
-
+    let resolved_path = resolve_destination_folder(&path, std::path::Path::new("."));
     let path_str = resolved_path.to_string_lossy().to_string();
     app.opener()
         .open_path(path_str, None::<&str>)
@@ -293,5 +278,32 @@ pub async fn cmd_convert_legacy_folder_batch(
 pub fn cmd_cancel_batch() {
     crate::engine::batch::cancel_batch();
 }
+
+#[command]
+pub fn cmd_window_minimize(window: Window) -> Result<(), String> {
+    window.minimize().map_err(|e| e.to_string())
+}
+
+#[command]
+pub fn cmd_window_toggle_maximize(window: Window) -> Result<bool, String> {
+    if window.is_maximized().unwrap_or(false) {
+        window.unmaximize().map_err(|e| e.to_string())?;
+        Ok(false)
+    } else {
+        window.maximize().map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+}
+
+#[command]
+pub fn cmd_window_close(window: Window) -> Result<(), String> {
+    window.close().map_err(|e| e.to_string())
+}
+
+#[command]
+pub fn cmd_window_is_maximized(window: Window) -> Result<bool, String> {
+    window.is_maximized().map_err(|e| e.to_string())
+}
+
 
 

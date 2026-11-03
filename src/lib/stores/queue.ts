@@ -53,11 +53,14 @@ export const dragStateStore = writable<DragState>({
 });
 
 export function formatBytes(bytes: number): string {
-  if (!bytes || bytes === 0) return '0 B';
+  if (!bytes || bytes === 0 || isNaN(bytes)) return '0 B';
+  const isNegative = bytes < 0;
+  const absBytes = Math.abs(bytes);
   const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.min(Math.floor(Math.log(absBytes) / Math.log(k)), sizes.length - 1);
+  const formatted = parseFloat((absBytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  return isNegative ? '-' + formatted : formatted;
 }
 
 export const queueStatsStore = derived(

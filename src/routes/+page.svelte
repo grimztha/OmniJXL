@@ -136,7 +136,7 @@
   });
 </script>
 
-<div class="h-screen w-screen flex flex-col overflow-hidden bg-surface-900 text-slate-100 font-sans">
+<div class="h-full w-full flex flex-col overflow-hidden bg-surface-900 text-slate-100 font-sans">
   <!-- Desktop Titlebar Header with Tab Switcher -->
   <Header />
 

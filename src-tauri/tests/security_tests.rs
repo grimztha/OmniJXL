@@ -181,3 +181,35 @@ fn test_security_sniff_magic_bytes_detection() {
     // Random bytes
     assert_eq!(sniff_magic_bytes(&[0x12, 0x34, 0x56, 0x78]), MagicFormat::Unknown);
 }
+
+#[test]
+fn test_empty_0_byte_file_rejected_by_inspect() {
+    use omnijxl_lib::engine::formats::{inspect_image, inspect_image_without_thumbnail};
+    let temp_dir = tempfile::tempdir().expect("tempdir");
+    let empty_path = temp_dir.path().join("zero.png");
+    File::create(&empty_path).unwrap();
+
+    let res = inspect_image(&empty_path.to_string_lossy());
+    assert!(res.is_err(), "0-byte file must be rejected by inspect_image");
+    assert!(res.unwrap_err().contains("0 bytes"));
+
+    let res2 = inspect_image_without_thumbnail(&empty_path.to_string_lossy());
+    assert!(res2.is_err(), "0-byte file must be rejected by inspect_image_without_thumbnail");
+    assert!(res2.unwrap_err().contains("0 bytes"));
+}
+
+#[test]
+fn test_append_png_text_chunk_corrupted_png_safely_ignored() {
+    use omnijxl_lib::engine::metadata::append_png_text_chunk;
+
+    // Buffer smaller than 12 bytes
+    let short_buf = b"NOT_PNG";
+    let res = append_png_text_chunk(short_buf, "key", "val");
+    assert_eq!(res, short_buf);
+
+    // Buffer without PNG magic header
+    let fake_buf = b"1234567890123456";
+    let res2 = append_png_text_chunk(fake_buf, "key", "val");
+    assert_eq!(res2, fake_buf);
+}
+

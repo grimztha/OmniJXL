@@ -65,6 +65,9 @@ pub fn inspect_image(path_str: &str) -> Result<ImageItemInfo, String> {
     }
 
     let orig_size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    if orig_size == 0 {
+        return Err(format!("File is empty (0 bytes): {}", path_str));
+    }
 
     let name = path
         .file_name()
@@ -142,6 +145,9 @@ pub fn inspect_image_without_thumbnail(path_str: &str) -> Result<ImageItemInfo, 
     }
 
     let orig_size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    if orig_size == 0 {
+        return Err(format!("File is empty (0 bytes): {}", path_str));
+    }
 
     let name = path
         .file_name()
@@ -357,8 +363,9 @@ pub fn read_jxl_dimensions(path: &Path) -> (u32, u32) {
     let mut height = 1080;
 
     if let Some(jxlinfo) = super::detector::find_jxlinfo_executable() {
+        let abs_path = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
         let mut cmd = std::process::Command::new(jxlinfo);
-        cmd.arg(path);
+        cmd.arg(&abs_path);
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
@@ -394,9 +401,10 @@ fn read_jxl_info(path: &Path) -> (u32, u32, Option<String>) {
     if let Some(djxl) = super::detector::find_djxl_executable()
         && let Ok(temp_dir) = tempfile::tempdir()
     {
+        let abs_path = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
         let thumb_path = temp_dir.path().join("thumb.png");
         let mut cmd = std::process::Command::new(djxl);
-        cmd.arg(path).arg(&thumb_path).arg("-s").arg("8").arg("--quiet");
+        cmd.arg(&abs_path).arg(&thumb_path).arg("-s").arg("8").arg("--quiet");
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
